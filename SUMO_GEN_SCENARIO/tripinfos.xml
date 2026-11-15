@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-11-15T14:28:56.759796+07:00 by Eclipse SUMO GUI 1.28.0
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.net.xml.gz"/>
+        <route-files value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.motorcycle.trips.xml,D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.passenger.trips.xml,D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.truck.trips.xml"/>
+        <additional-files value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.poly.xml.gz,D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\output.add.xml"/>
+    </input>
+
+    <output>
+        <tripinfo-output value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\tripinfos.xml"/>
+        <statistic-output value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\stats.xml"/>
+    </output>
+
+    <processing>
+        <ignore-route-errors value="true"/>
+        <tls.actuated.jam-threshold value="30"/>
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-steps value="18"/>
+        <device.rerouting.adaptation-interval value="10"/>
+    </routing>
+
+    <report>
+        <verbose value="true"/>
+        <duration-log.statistics value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <gui_only>
+        <gui-settings-file value="D:\Learn\SE-Y4\quantum_computing\commercial_fleet_route_optimization\2026-11-15-14-06-02\osm.view.xml"/>
+    </gui_only>
+
+</sumoConfiguration>
+-->
+
+<tripinfos xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/tripinfo_file.xsd">
+    <tripinfo id="motorcycle0" depart="0.00" departLane="-151684401#0_0" departPos="2.30" departSpeed="13.89" departDelay="0.00" arrival="2.00" arrivalLane="-151684401#0_0" arrivalPos="18.78" arrivalSpeed="12.45" duration="2.00" routeLength="16.48" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="0.23" rerouteNo="1" devices="tripinfo_motorcycle0 routing_motorcycle0" vType="motorcycle_motorcycle" speedFactor="1.06" vaporized=""/>
+    <tripinfo id="motorcycle7" depart="1.00" departLane="989204979#3_0" departPos="2.30" departSpeed="7.70" departDelay="0.46" arrival="19.00" arrivalLane="589263436_0" arrivalPos="28.99" arrivalSpeed="12.46" duration="18.00" routeLength="158.72" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="4.43" rerouteNo="1" devices="tripinfo_motorcycle7 routing_motorcycle7" vType="motorcycle_motorcycle" speedFactor="1.03" vaporized=""/>
+    <tripinfo id="motorcycle64" depart="5.00" departLane="-37370173#2_0" departPos="2.30" departSpeed="13.89" departDelay="0.10" arrival="26.00" arrivalLane="-37370171#8_0" arrivalPos="15.65" arrivalSpeed="11.35" duration="21.00" routeLength="114.32" waitingTime="2.00" waitingCount="1" stopTime="0.00" timeLoss="10.35" rerouteNo="1" devices="tripinfo_motorcycle64 routing_motorcycle64" vType="motorcycle_motorcycle" speedFactor="1.04" vaporized=""/>
+    <tripinfo id="motorcycle74" depart="6.00" departLane="-314307831#3_0" departPos="2.30" departSpeed="13.89" departDelay="0.34" arrival="33.00" arrivalLane="817097662#3_0" arrivalPos="143.40" arrivalSpeed="21.66" duration="27.00" routeLength="308.30" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="6.54" rerouteNo="1" devices="tripinfo_motorcycle74 routing_motorcycle74" vType="motorcycle_motorcycle" speedFactor="1.01" vaporized=""/>
+    <tripinfo id="motorcycle40" depart="4.00" departLane="-152286865_0" departPos="2.30" departSpeed="13.89" departDelay="0.94" arrival="34.00" arrivalLane="-37186361#5_0" arrivalPos="11.30" arrivalSpeed="11.40" duration="30.00" routeLength="283.17" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="7.23" rerouteNo="1" devices="tripinfo_motorcycle40 routing_motorcycle40" vType="motorcycle_motorcycle" speedFactor="1.04" vaporized=""/>
+    <tripinfo id="motorcycle131" depart="11.00" departLane="-420747394#6_0" departPos="2.30" departSpeed="13.89" departDelay="0.98" arrival="35.00" arrivalLane="-519421789#0_0" arrivalPos="129.43" arrivalSpeed="11.13" duration="24.00" routeLength="220.01" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="6.39" rerouteNo="1" devices="tripinfo_motorcycle131 routing_motorcycle131" vType="motorcycle_motorcycle" speedFactor="1.01" vaporized=""/>
+    <tripinfo id="motorcycle130" depart="12.00" departLane="347007512#4_0" departPos="2.30" departSpeed="7.96" departDelay="2.05" arrival="36.00" arrivalLane="907977134_0" arrivalPos="128.29" arrivalSpeed="16.70" duration="24.00" routeLength="302.87" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="4.84" rerouteNo="1" devices="tripinfo_motorcycle130 routing_motorcycle130" vType="motorcycle_motorcycle" speedFactor="1.23" vaporized=""/>
+    <tripinfo id="motorcycle240" depart="19.00" departLane="450533315#3_0" departPos="2.30" departSpeed="13.89" departDelay="0.64" arrival="36.00" arrivalLane="-450533315#1_0" arrivalPos="35.95" arrivalSpeed="13.96" duration="17.00" routeLength="174.26" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="3.69" rerouteNo="1" devices="tripinfo_motorcycle240 routing_motorcycle240" vType="motorcycle_motorcycle" speedFactor="1.02" vaporized=""/>
+</tripinfos>
