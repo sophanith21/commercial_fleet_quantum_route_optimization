@@ -8,7 +8,15 @@ Usage:
     python scripts/benchmark.py --sumo                 # also the real SUMO scenario
     python scripts/benchmark.py --sizes 3x3x2 5x5x3 --seeds 10 --out results/run.csv
 
-Size format: VANSxDESTINATIONSxK_PATHS.
+Size format: VANSxDESTINATIONSxK_PATHS (number of QUBO variables = VANS * DESTINATIONS * K_PATHS).
+
+Output:
+  * a summary table on stdout, one block per instance size: how often each solver returned a
+    feasible plan, how often it hit the optimum, mean / max gap and mean runtime;
+  * one CSV row per (instance, solver) in --out, for plotting or further analysis.
+
+Timing note: QUBO-based solvers (brute force, SA, tabu) include the time to build the QUBO;
+MILP, enumeration and greedy work from the Problem directly and do not need it.
 """
 
 from __future__ import annotations
@@ -21,6 +29,7 @@ import sys
 import time
 from collections import defaultdict
 
+# Make `fleetopt` importable when the script is run directly (no `pip install -e .` needed)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
@@ -30,25 +39,33 @@ from fleetopt.heuristic import greedy, simulated_annealing, tabu  # noqa: E402
 from fleetopt.problem import make_random_problem  # noqa: E402
 from fleetopt.qubo import DEFAULT_PENALTY_FACTOR, build_qubo, recommended_penalties  # noqa: E402
 
-BF_MAX_VARS = 20
-ENUM_MAX_PLANS = 50_000
+# Skip limits for the exact solvers that do not scale (well below their hard limits, to keep a
+# default run to about a minute)
+BF_MAX_VARS = 20          # brute force: 2^20 ~ 1M states
+ENUM_MAX_PLANS = 50_000   # enumeration: ~7 s at 29k plans (5x5x3)
+
 DEFAULT_SIZES = ["3x3x2", "3x3x3", "4x4x2", "4x4x3", "5x5x2", "5x5x3", "6x6x3"]
+# MILP must run first: its optimum is the reference for every gap
 SOLVERS = ["milp", "enumerate_feasible", "brute_force_qubo", "greedy", "simulated_annealing", "tabu"]
 FIELDS = ["source", "vans", "dests", "k_paths", "seed", "n_vars", "solver",
           "status", "feasible", "objective", "gap", "time_s"]
+OPTIMAL_TOL = 1e-9        # relative gap at or below this counts as optimal
 
 
-def parse_size(s: str):
+def parse_size(s: str) -> tuple[int, int, int]:
+    """'5x5x3' -> (vans, destinations, k_paths)."""
     v, d, k = (int(t) for t in s.lower().split("x"))
     return v, d, k
 
 
 def num_plans(problem) -> int:
+    """Number of valid plans: ordered van choices P(|V|, |D|) times path choices."""
     v, d = len(problem.vans), len(problem.paths)
     return math.perm(v, d) * math.prod(len(ps) for ps in problem.paths.values())
 
 
 def has_tabu() -> bool:
+    """True if the optional dwave-samplers package is installed."""
     try:
         import dwave.samplers  # noqa: F401
         return True
@@ -57,7 +74,10 @@ def has_tabu() -> bool:
 
 
 def run_solvers(problem, args):
-    """Yield (solver, status, chosen_or_None, seconds)."""
+    """Run every solver on one instance. Yields (solver, status, chosen_or_None, seconds).
+
+    status is "ok", or "skipped (...)" with chosen = seconds = None.
+    """
     t0 = time.perf_counter()
     if args.penalty_factor is None:
         A = B = 10.0                                   # old fixed default, for comparison
@@ -68,6 +88,7 @@ def run_solvers(problem, args):
     n = len(variables)
 
     def timed(fn):
+        """Call fn() and return (result, elapsed seconds)."""
         t = time.perf_counter()
         out = fn()
         return out, time.perf_counter() - t
@@ -102,10 +123,15 @@ def run_solvers(problem, args):
 
 
 def benchmark_instance(problem, source, size, seed, args, writer, rows):
+    """Run all solvers on one instance; write one CSV row per solver and collect it in `rows`.
+
+    gap = (objective - MILP optimum) / MILP optimum, filled only for feasible results.
+    """
     v, d, k = size
     n_vars = len(problem.vans) * sum(len(ps) for ps in problem.paths.values())
     results = list(run_solvers(problem, args))
-    ref = objective(next(c for s, st, c, _ in results if s == "milp"), problem)
+    milp_chosen = next(chosen for solver, _, chosen, _ in results if solver == "milp")
+    ref = objective(milp_chosen, problem)
     for solver, status, chosen, dt in results:
         row = dict(source=source, vans=v, dests=d, k_paths=k, seed=seed, n_vars=n_vars,
                    solver=solver, status=status, feasible="", objective="", gap="", time_s="")
@@ -120,7 +146,8 @@ def benchmark_instance(problem, source, size, seed, args, writer, rows):
 
 
 def summarise(rows):
-    groups = defaultdict(list)
+    """Print one line per (instance size, solver), aggregated over seeds."""
+    groups = defaultdict(list)  # insertion-ordered, so output follows the run order
     for r in rows:
         groups[(r["source"], r["vans"], r["dests"], r["k_paths"], r["n_vars"], r["solver"])].append(r)
 
@@ -130,7 +157,7 @@ def summarise(rows):
     last = None
     for (src, v, d, k, n, solver), rs in groups.items():
         if last is not None and (src, v, d, k) != last:
-            print()
+            print()  # blank line between instance sizes
         last = (src, v, d, k)
         ran = [r for r in rs if r["status"] == "ok"]
         size = f"{v}x{d}x{k}"
@@ -139,7 +166,7 @@ def summarise(rows):
             continue
         feas = [r for r in ran if r["feasible"] is True]
         gaps = [float(r["gap"]) for r in feas]
-        opt = sum(g <= 1e-9 for g in gaps)
+        opt = sum(g <= OPTIMAL_TOL for g in gaps)
         times = [float(r["time_s"]) for r in ran]
         mean_gap = f"{sum(gaps) / len(gaps):.4%}" if gaps else "-"
         max_gap = f"{max(gaps):.4%}" if gaps else "-"
@@ -152,12 +179,13 @@ def main():
     ap.add_argument("--sizes", nargs="+", default=DEFAULT_SIZES)
     ap.add_argument("--seeds", type=int, default=5, help="random instances per size")
     ap.add_argument("--sumo", action="store_true", help="also benchmark the real SUMO scenario")
-    ap.add_argument("--sumo-sizes", nargs="+", default=["3x3x2", "3x3x3", "4x4x2", "4x4x3", "5x5x2", "5x5x3"])
-    ap.add_argument("--sa-reads", type=int, default=10)
-    ap.add_argument("--sa-sweeps", type=int, default=300)
+    ap.add_argument("--sumo-sizes", nargs="+", default=["3x3x2", "3x3x3", "4x4x2", "4x4x3", "5x5x2", "5x5x3"],
+                    help="SUMO sizes; the map is reloaded per size (about 1 s each)")
+    ap.add_argument("--sa-reads", type=int, default=10, help="SA restarts per instance")
+    ap.add_argument("--sa-sweeps", type=int, default=300, help="SA sweeps per restart")
     ap.add_argument("--tabu-reads", type=int, default=5)
-    ap.add_argument("--solver-seed", type=int, default=0)
-    ap.add_argument("--milp-time-limit", type=float, default=60)
+    ap.add_argument("--solver-seed", type=int, default=0, help="seed for SA and tabu")
+    ap.add_argument("--milp-time-limit", type=float, default=60, help="seconds per MILP solve")
     ap.add_argument("--penalty-factor", type=float, default=DEFAULT_PENALTY_FACTOR,
                     help="A = B = factor * A_min (default %(default)s)")
     ap.add_argument("--old-penalties", dest="penalty_factor", action="store_const", const=None,
@@ -171,6 +199,7 @@ def main():
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
 
+        # Synthetic instances: seeds 0..N-1 per size
         for s in args.sizes:
             size = parse_size(s)
             for seed in range(args.seeds):
@@ -178,8 +207,9 @@ def main():
                 benchmark_instance(p, "random", size, seed, args, writer, rows)
             print(f"random {s}: {args.seeds} instances done", flush=True)
 
+        # Real map: one instance per size, seed 42 as in the notebook
         if args.sumo:
-            from fleetopt.problem import build_problem_from_sumo
+            from fleetopt.problem import build_problem_from_sumo  # needs sumolib
             net = os.path.join(ROOT, "SUMO_GEN_SCENARIO", "osm.net.xml.gz")
             for s in args.sumo_sizes:
                 size = parse_size(s)

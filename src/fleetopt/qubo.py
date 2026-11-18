@@ -1,4 +1,23 @@
-"""QUBO builder (refactored from preprocessing.ipynb: no globals, optional printing)."""
+"""QUBO formulation of the route-assignment problem, plus penalty-weight selection.
+
+A QUBO (Quadratic Unconstrained Binary Optimisation) is: minimise  E(x) = sum_{i<=j} Q_ij x_i x_j
+over binary vectors x. Quantum annealers and many classical heuristics only accept this form,
+so the hard constraints of the problem have to become penalty terms in the energy.
+
+One binary variable per (van, destination, path):  x[v,d,p] = 1  <=>  van v drives path p to d.
+
+    E(x) = H_cost + H_cong + H_A + H_B
+
+    H_cost = sum_{v,d,p} C_norm[d,p] * x[v,d,p]                       travel time
+    H_cong = sum_{route pairs a,b of different dests} sum_{v1,v2}
+             congestion(a, b) * x[v1,a] * x[v2,b]                       shared roads
+    H_A    = A * sum_d (sum_{v,p} x[v,d,p] - 1)^2                       each dest exactly once
+    H_B    = B * sum_v sum_{pairs i<j of v's variables} x_i * x_j       each van at most once
+
+Expanding H_A with x^2 = x (binary) gives  A - A*sum x + 2A*sum_{i<j} x_i x_j  per destination.
+The constant A per destination is dropped from Q (it does not change the minimiser) and is
+returned by `qubo_offset()` so energies can be turned back into real costs.
+"""
 
 from __future__ import annotations
 
@@ -6,20 +25,15 @@ from itertools import combinations
 
 from .problem import Problem
 
+# A = B = DEFAULT_PENALTY_FACTOR * A_min. Chosen by scripts/penalty_sweep.py: it gave the best
+# simulated-annealing success rate at every problem size tried (the old fixed A = B = 10 was
+# 6-14x larger than needed and found the optimum far less often).
+DEFAULT_PENALTY_FACTOR = 1.1
 
-DEFAULT_PENALTY_FACTOR = 1.1  # chosen by scripts/penalty_sweep.py: best SA success at every size
 
-
-def qubo_offset(problem: Problem, A: float | None = None) -> float:
-    """Constant dropped from H_A = A * sum_d (sum x - 1)^2.
-
-    For any feasible x:  qubo_energy(Q, x) + qubo_offset(problem, A) == objective(x).
-    A=None uses the same default as build_qubo.
-    """
-    if A is None:
-        A, _ = recommended_penalties(problem, DEFAULT_PENALTY_FACTOR)
-    return A * len(problem.paths)
-
+# ---------------------------------------------------------------------------------------------
+# Penalty weights
+# ---------------------------------------------------------------------------------------------
 
 def penalty_bounds(problem: Problem) -> tuple[float, float]:
     """Return (A_min, B_min): any A > A_min and B > B_min makes every QUBO ground state feasible.
@@ -34,6 +48,10 @@ def penalty_bounds(problem: Problem) -> tuple[float, float]:
          raises cost by at most  C_norm[d,p] + sum_{d' != d} max_{p'} congestion((d,p),(d',p')).
          So A > max_d min_p of that quantity rules out unserved destinations.
     The bound is tight in the worst case (see tests/test_penalties.py::test_tiny_bound_is_tight).
+
+    Why it matters: penalties that are too small give infeasible ground states; penalties that
+    are too large flatten the cost landscape relative to the constraints, which makes annealing
+    (classical or quantum) much less likely to find the optimum.
     """
     if len(problem.vans) < len(problem.paths):
         raise ValueError("Penalty bound assumes at least as many vans as destinations.")
@@ -41,17 +59,20 @@ def penalty_bounds(problem: Problem) -> tuple[float, float]:
         raise ValueError("Penalty bound assumes non-negative costs and lam_cong.")
 
     def worst_add_cost(d, p):
-        return problem.C_norm[(d, p)] + sum(
+        """Most that adding route (d, p) can raise the cost, whatever else is selected."""
+        worst_congestion = sum(
             max(problem.congestion((d, p), (d2, p2)) for p2 in ps2)
             for d2, ps2 in problem.paths.items() if d2 != d
         )
+        return problem.C_norm[(d, p)] + worst_congestion
 
     A_min = max(min(worst_add_cost(d, p) for p in ps) for d, ps in problem.paths.items())
     return A_min, 0.0
 
 
-def recommended_penalties(problem: Problem, factor: float = 1.5, B: float | None = None):
-    """A = factor * A_min (factor > 1 for a safety margin); B defaults to A."""
+def recommended_penalties(problem: Problem, factor: float = DEFAULT_PENALTY_FACTOR,
+                          B: float | None = None) -> tuple[float, float]:
+    """Return (A, B) with A = factor * A_min. B defaults to A (best in the penalty sweep)."""
     if factor <= 1:
         raise ValueError("factor must be > 1 (A must strictly exceed A_min).")
     A_min, _ = penalty_bounds(problem)
@@ -59,57 +80,78 @@ def recommended_penalties(problem: Problem, factor: float = 1.5, B: float | None
     return A, (A if B is None else B)
 
 
-def build_qubo(problem: Problem, A: float | None = None, B: float | None = None, verbose: bool = False):
-    """Return (Q, variables). Q maps (var_i, var_j) with index(var_i) <= index(var_j) to a coefficient.
+def qubo_offset(problem: Problem, A: float | None = None) -> float:
+    """The constant dropped from H_A: A per destination.
 
-    A/B default to 1.1 * A_min (see penalty_bounds); pass explicit values to override.
+    For any feasible x:  qubo_energy(Q, x) + qubo_offset(problem, A) == objective(x).
+    Pass the same A used in build_qubo; A=None uses the same default as build_qubo.
+    """
+    if A is None:
+        A, _ = recommended_penalties(problem)
+    return A * len(problem.paths)
 
-    Variables are (van, destination, path). Terms:
-      H_cost = sum C_norm[d,p] x[v,d,p]
-      H_cong = sum over route pairs of different destinations, all van pairs, of lam * S_norm
-      H_A    = A * sum_d (sum_{v,p} x[v,d,p] - 1)^2   (constant dropped)
-      H_B    = B * sum_v sum_{pairs} x_i x_j           (each van serves at most one destination)
+
+# ---------------------------------------------------------------------------------------------
+# QUBO construction
+# ---------------------------------------------------------------------------------------------
+
+def build_qubo(problem: Problem, A: float | None = None, B: float | None = None,
+               verbose: bool = False):
+    """Build the QUBO. Returns (Q, variables).
+
+    Q:         {(var_i, var_j): coefficient} with index(var_i) <= index(var_j), i.e. upper
+               triangular. Diagonal keys (var, var) are the linear terms.
+    variables: [(v, d, p), ...] in a fixed order; that order defines the indices above and
+               the bit positions used by the solvers.
+
+    A / B default to recommended_penalties(problem); pass explicit values to override.
+    Zero coefficients are not stored.
     """
     if A is None or B is None:
-        A_def, B_def = recommended_penalties(problem, DEFAULT_PENALTY_FACTOR)
-        A = A_def if A is None else A
-        B = B_def if B is None else B
+        A_default, B_default = recommended_penalties(problem)
+        A = A_default if A is None else A
+        B = B_default if B is None else B
 
     vans, paths = problem.vans, problem.paths
-    variables =[(v, d, p) for v in vans for d, ps in paths.items() for p in ps]
+    variables = [(v, d, p) for v in vans for d, ps in paths.items() for p in ps]
     index = {var: i for i, var in enumerate(variables)}
     Q: dict = {}
 
-    def add(a, b, c):
+    def add(a, b, coefficient):
+        """Accumulate into Q, always storing the pair in (lower index, higher index) order."""
         if index[a] > index[b]:
             a, b = b, a
-        Q[(a, b)] = Q.get((a, b), 0.0) + c
+        Q[(a, b)] = Q.get((a, b), 0.0) + coefficient
 
-    # Travel cost
+    # H_cost: linear travel cost. It does not depend on the van.
     for v, d, p in variables:
         add((v, d, p), (v, d, p), problem.C_norm[(d, p)])
 
-    # Congestion (only between routes of different destinations)
-    for ra, rb in combinations(problem.routes, 2):
-        c = problem.congestion(ra, rb)
+    # H_cong: quadratic congestion between routes to different destinations. It applies to every
+    # van pair (v1, v2): congestion depends on the roads used, not on which van drives them.
+    for route_a, route_b in combinations(problem.routes, 2):
+        c = problem.congestion(route_a, route_b)
         if c == 0:
             continue
         for v1 in vans:
             for v2 in vans:
-                add((v1, *ra), (v2, *rb), c)
+                add((v1, *route_a), (v2, *route_b), c)
 
-    # Each destination exactly once
+    # H_A: each destination exactly once  ->  -A on the diagonal, +2A between every pair of
+    # variables that serve the same destination (any van, any path).
     for d in paths:
-        dvars = [(v, d, p) for v in vans for p in paths[d]]
-        for var in dvars:
+        dest_vars = [(v, d, p) for v in vans for p in paths[d]]
+        for var in dest_vars:
             add(var, var, -A)
-        for a, b in combinations(dvars, 2):
+        for a, b in combinations(dest_vars, 2):
             add(a, b, 2 * A)
 
-    # Each van at most one destination
+    # H_B: each van at most once  ->  +B between every pair of variables of the same van.
+    # ("At most" rather than "exactly" because there may be more vans than destinations,
+    # so no linear term is needed.)
     for v in vans:
-        vvars = [(v, d, p) for d in paths for p in paths[d]]
-        for a, b in combinations(vvars, 2):
+        van_vars = [(v, d, p) for d in paths for p in paths[d]]
+        for a, b in combinations(van_vars, 2):
             add(a, b, B)
 
     if verbose:
@@ -117,11 +159,12 @@ def build_qubo(problem: Problem, A: float | None = None, B: float | None = None,
     return Q, variables
 
 
-def _print_qubo(problem, Q, variables, A, B):
+def _print_qubo(problem: Problem, Q: dict, variables: list, A: float, B: float) -> None:
+    """Human-readable dump, with variables named x{van}_D{i}_P{path+1} as in the notebook."""
     labels = {d: f"D{i + 1}" for i, d in enumerate(problem.paths)}
     name = {var: f"x{var[0]}_{labels[var[1]]}_P{var[2] + 1}" for var in variables}
     print("========== QUBO MODEL ==========")
     print(f"Vans: {len(problem.vans)}  Destinations: {len(problem.paths)}  Variables: {len(variables)}")
-    print(f"lam_cong={problem.lam_cong}  A={A}  B={B}  Coefficients: {len(Q)}")
+    print(f"lam_cong={problem.lam_cong}  A={A:.4f}  B={B:.4f}  Coefficients: {len(Q)}")
     for (a, b), c in Q.items():
         print(f"Q[{name[a]}, {name[b]}] = {c:.4f}")

@@ -1,3 +1,10 @@
+"""The QUBO model itself: structure, and agreement with the independently computed objective.
+
+The most important test is test_energy_matches_objective_on_every_feasible_state: if QUBO energy
+plus offset equals `objective()` on every valid plan, the cost and congestion terms are encoded
+correctly. The penalty tests then check that invalid plans are pushed above the optimum.
+"""
+
 import itertools
 from dataclasses import replace
 
@@ -9,6 +16,7 @@ from fleetopt.qubo import build_qubo, qubo_offset
 
 
 def all_feasible(problem):
+    """Yield every valid plan as a chosen set (same enumeration as exact.enumerate_feasible)."""
     dests = list(problem.paths)
     for vans in itertools.permutations(problem.vans, len(dests)):
         for ps in itertools.product(*(problem.paths[d] for d in dests)):

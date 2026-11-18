@@ -1,6 +1,14 @@
+"""Exact solvers: each must return the true optimum, and the three must agree.
+
+Results are compared by objective value, not by assignment: vans are interchangeable and some
+paths tie, so several different plans can be optimal.
+"""
+
+from dataclasses import replace
+
 import pytest
 
-from conftest import TINY_OPT_ROUTES, TINY_OPT_VALUE
+from conftest import TINY_OPT_ROUTES, TINY_OPT_VALUE, requires_milp
 from fleetopt.evaluate import decode, is_feasible, objective
 from fleetopt.exact import brute_force_qubo, enumerate_feasible, milp
 from fleetopt.heuristic import greedy, simulated_annealing
@@ -8,7 +16,11 @@ from fleetopt.qubo import build_qubo, qubo_offset
 
 
 def routes_of(chosen):
+    """Drop the van from each selected variable: {(d, p), ...}."""
     return {(d, p) for _, d, p in chosen}
+
+
+# ---------- brute force and enumeration ----------
 
 
 def test_enumerate_feasible_tiny(tiny):
@@ -65,11 +77,9 @@ def test_matches_dimod_exact_solver(random_problem):
     assert e == pytest.approx(ref)
 
 
-# ---------- MILP (PuLP + CBC) ----------
+# ---------- MILP (PuLP + HiGHS) ----------
 
-pulp = pytest.importorskip("pulp")
-
-
+@requires_milp
 def test_milp_tiny(tiny):
     chosen, val = milp(tiny)
     assert is_feasible(chosen, tiny)
@@ -77,6 +87,7 @@ def test_milp_tiny(tiny):
     assert routes_of(chosen) == TINY_OPT_ROUTES
 
 
+@requires_milp
 @pytest.mark.parametrize("seed", range(20))
 def test_milp_matches_enumeration(seed, random_problem):
     p = random_problem(seed)
@@ -86,6 +97,7 @@ def test_milp_matches_enumeration(seed, random_problem):
     assert val == pytest.approx(enumerate_feasible(p)[1])
 
 
+@requires_milp
 def test_milp_more_vans_than_destinations(more_vans_than_dests):
     p = more_vans_than_dests
     chosen, val = milp(p)
@@ -93,6 +105,7 @@ def test_milp_more_vans_than_destinations(more_vans_than_dests):
     assert val == pytest.approx(enumerate_feasible(p)[1])
 
 
+@requires_milp
 @pytest.mark.parametrize("seed", range(3))
 def test_milp_on_instance_too_large_for_brute_force(seed, random_problem):
     """75 variables: brute force refuses; MILP must still be feasible and a lower bound on heuristics."""
@@ -108,7 +121,7 @@ def test_milp_on_instance_too_large_for_brute_force(seed, random_problem):
         assert objective(sa, p) >= opt - 1e-9
 
 
+@requires_milp
 def test_milp_rejects_negative_lambda(tiny):
-    from dataclasses import replace
     with pytest.raises(ValueError):
         milp(replace(tiny, lam_cong=-0.1))

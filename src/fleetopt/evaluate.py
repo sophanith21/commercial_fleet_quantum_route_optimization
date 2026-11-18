@@ -1,4 +1,18 @@
-"""Solution evaluation, independent of the QUBO so the two can be cross-checked."""
+"""Scoring and checking solutions.
+
+Two independent ways to score a plan are provided on purpose:
+
+  * qubo_energy(Q, x)        - what the QUBO says (penalties included, constant offset dropped)
+  * objective(chosen, prob)  - the real cost, computed straight from the problem data
+
+For a feasible plan they must agree (up to qubo_offset). The tests rely on that agreement to
+catch mistakes in the QUBO construction, so `objective` must never be written in terms of Q.
+
+Two solution formats are used:
+  x       dict {var: 0 or 1} over *all* variables  (what QUBO solvers return)
+  chosen  set {(v, d, p), ...} of selected variables (what humans and `objective` read)
+`decode` / `encode` convert between them.
+"""
 
 from __future__ import annotations
 
@@ -11,12 +25,12 @@ from .problem import Problem
 
 
 def qubo_energy(Q: dict, x: dict) -> float:
-    """Energy of a 0/1 assignment x (var -> bit) under Q (offset not included)."""
+    """E(x) = sum Q_ij x_i x_j  (offset not included)."""
     return sum(c * x[a] * x[b] for (a, b), c in Q.items())
 
 
 def qubo_matrix(Q: dict, variables: list) -> np.ndarray:
-    """Upper-triangular matrix M with E(x) = x^T M x."""
+    """Dense upper-triangular matrix M with  E(x) = x^T M x,  rows/cols in `variables` order."""
     idx = {v: i for i, v in enumerate(variables)}
     M = np.zeros((len(variables), len(variables)))
     for (a, b), c in Q.items():
@@ -26,29 +40,33 @@ def qubo_matrix(Q: dict, variables: list) -> np.ndarray:
 
 
 def decode(x: dict) -> set:
-    """Selected variables {(van, dest, path), ...}."""
+    """Bit dict -> set of selected variables."""
     return {var for var, bit in x.items() if bit}
 
 
 def encode(chosen, variables: list) -> dict:
+    """Set of selected variables -> bit dict over all `variables`."""
     chosen = set(chosen)
     return {v: int(v in chosen) for v in variables}
 
 
 def is_feasible(chosen, problem: Problem) -> bool:
-    """Each destination served exactly once; each van used at most once."""
+    """True iff every destination is served exactly once and no van is used twice."""
     dest_counts = Counter(d for _, d, _ in chosen)
     van_counts = Counter(v for v, _, _ in chosen)
-    return (
-        set(dest_counts) == set(problem.paths)
-        and all(n == 1 for n in dest_counts.values())
-        and all(n == 1 for n in van_counts.values())
-    )
+    every_dest_served = set(dest_counts) == set(problem.paths)
+    each_dest_once = all(n == 1 for n in dest_counts.values())
+    each_van_at_most_once = all(n == 1 for n in van_counts.values())
+    return every_dest_served and each_dest_once and each_van_at_most_once
 
 
 def objective(chosen, problem: Problem) -> float:
-    """True cost (travel + congestion), computed directly from the problem, not from Q."""
+    """Real cost of a plan: total normalised travel time + congestion between every route pair.
+
+    Computed only from the Problem (never from Q). Meaningful for feasible plans; for infeasible
+    ones it simply scores whatever routes are selected.
+    """
     routes = [(d, p) for _, d, p in chosen]
-    cost = sum(problem.C_norm[r] for r in routes)
-    cost += sum(problem.congestion(a, b) for a, b in combinations(routes, 2))
-    return cost
+    travel = sum(problem.C_norm[r] for r in routes)
+    congestion = sum(problem.congestion(a, b) for a, b in combinations(routes, 2))
+    return travel + congestion

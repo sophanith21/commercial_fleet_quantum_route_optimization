@@ -1,15 +1,21 @@
+"""Heuristic solvers, judged against the exact optimum.
+
+Heuristics are not guaranteed optimal, so the properties tested are: feasibility, never beating
+the exact optimum (that would mean a bug in the exact solver or the objective), reproducibility
+with a fixed seed, and how often / how closely they reach the optimum. All randomness is seeded,
+so the statistical tests are deterministic and not flaky.
+"""
+
 import pytest
 
 from conftest import TINY_OPT_VALUE
-from fleetopt.evaluate import decode, is_feasible, objective
+from fleetopt.evaluate import decode, is_feasible, objective, qubo_energy
 from fleetopt.exact import enumerate_feasible
 from fleetopt.heuristic import greedy, simulated_annealing, tabu
 from fleetopt.qubo import build_qubo
 
-SA_KW = dict(num_reads=10, num_sweeps=200)
+SA_KW = dict(num_reads=10, num_sweeps=200)  # small budget: keeps the suite fast
 
-
-# ---------- greedy ----------
 
 @pytest.mark.parametrize("seed", range(20))
 def test_greedy_always_feasible_and_never_beats_exact(seed, random_problem):
@@ -47,7 +53,7 @@ def test_sa_is_reproducible_with_seed(random_problem):
 
 
 def test_sa_reported_energy_is_consistent(random_problem):
-    from fleetopt.evaluate import qubo_energy
+    """SA tracks energy incrementally; it must match a from-scratch recomputation."""
     Q, variables = build_qubo(random_problem(2))
     x, e = simulated_annealing(Q, variables, seed=1, **SA_KW)
     assert e == pytest.approx(qubo_energy(Q, x))
@@ -77,7 +83,6 @@ def test_sa_success_rate(random_problem):
     assert hits / 30 >= 0.8
 
 
-# ---------- tabu (dwave-samplers) ----------
 
 @pytest.mark.parametrize("seed", range(5))
 def test_tabu_matches_exact(seed, random_problem):

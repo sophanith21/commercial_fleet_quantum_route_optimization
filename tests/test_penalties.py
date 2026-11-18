@@ -1,3 +1,9 @@
+"""Penalty weights: the provable bound A_min (qubo.penalty_bounds) and the recommended defaults.
+
+Checks that the bound is correct (A just above it gives a feasible optimal ground state on
+every instance) and tight (just below it fails on the tiny instance).
+"""
+
 from dataclasses import replace
 
 import pytest
@@ -8,6 +14,7 @@ from fleetopt.qubo import build_qubo, penalty_bounds, qubo_offset, recommended_p
 
 
 def ground_state(problem, A, B):
+    """Exact QUBO minimiser for the given penalties: (chosen set, energy + offset)."""
     Q, variables = build_qubo(problem, A=A, B=B)
     x, e = brute_force_qubo(Q, variables)
     return decode(x), e + qubo_offset(problem, A)
