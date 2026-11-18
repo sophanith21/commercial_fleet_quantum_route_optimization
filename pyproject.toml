@@ -1,0 +1,26 @@
+[project]
+name = "fleetopt"
+version = "0.1.0"
+description = "Congestion-aware multi-van route assignment: QUBO model with classical exact and heuristic baselines"
+requires-python = ">=3.10"
+dependencies = ["numpy", "networkx"]
+
+[project.optional-dependencies]
+sumo = ["sumolib"]
+dwave = ["dimod", "dwave-samplers"]
+milp = ["pulp", "highspy"]
+test = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "slow: needs the SUMO network file and sumolib (deselect with -m \"not slow\")",
+]
