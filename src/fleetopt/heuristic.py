@@ -1,12 +1,10 @@
-"""Heuristic classical solvers: fast, but with no optimality guarantee.
+"""Heuristic QUBO solvers: fast, but with no optimality guarantee.
 
-  greedy               builds a plan directly from the Problem; always feasible, often sub-optimal
-  simulated_annealing  QUBO search (own implementation): the closest classical analogue of
-                       quantum annealing, so it is the main baseline for the quantum solver
-  tabu                 QUBO local search from dwave-samplers (optional dependency)
+  simulated_annealing  own implementation; the closest classical analogue of quantum annealing
+  tabu                 local search from dwave-samplers (optional dependency)
 
-The QUBO solvers can return infeasible bitstrings if the search fails; always check the
-result with `evaluate.is_feasible`.
+Either can return a bit string that breaks the constraints if the search fails; decode the
+result (e.g. fleetopt.two_depot.decode_tour) before trusting it.
 """
 
 from __future__ import annotations
@@ -14,37 +12,6 @@ from __future__ import annotations
 import numpy as np
 
 from .evaluate import qubo_matrix
-from .problem import Problem
-
-
-def greedy(problem: Problem) -> set:
-    """Constructive heuristic. Returns a feasible chosen set {(v, d, p), ...}.
-
-    1. Order destinations from most to least expensive (by their cheapest path): the long trips
-       dominate the cost, so they get first pick of uncongested roads.
-    2. For each one, take the path with the lowest  travel cost + congestion with the routes
-       already chosen, and assign the next free van (vans are interchangeable).
-
-    Decisions are never revisited, which is why it can miss the optimum.
-    """
-    def cheapest(d):
-        return min(problem.C_norm[(d, p)] for p in problem.paths[d])
-
-    order = sorted(problem.paths, key=cheapest, reverse=True)
-    free_vans = list(problem.vans)
-    chosen, used_routes = set(), []
-
-    for d in order:
-        if not free_vans:
-            raise ValueError("More destinations than vans.")
-
-        def added_cost(p):
-            return problem.C_norm[(d, p)] + sum(problem.congestion((d, p), r) for r in used_routes)
-
-        best_p = min(problem.paths[d], key=added_cost)
-        chosen.add((free_vans.pop(0), d, best_p))
-        used_routes.append((d, best_p))
-    return chosen
 
 
 def simulated_annealing(

@@ -1,39 +1,20 @@
-"""Commercial fleet route optimisation: QUBO model plus classical baselines.
+"""Two-depot, two-van route optimisation as a QUBO, with classical baselines.
 
 Typical use:
 
-    from fleetopt import build_problem_from_sumo, build_qubo, objective
-    from fleetopt.exact import milp
-    from fleetopt.heuristic import simulated_annealing
-    from fleetopt.evaluate import decode
+    from fleetopt.two_depot import (build_tour_qubo, decode_tour, layout_source,
+                                    max_tour_cost, total_distance)
+    from fleetopt.heuristic import tabu
 
-    problem = build_problem_from_sumo()          # or make_random_problem(seed)
-    Q, variables = build_qubo(problem)           # penalties default to 1.1 * A_min
-    x, _ = simulated_annealing(Q, variables, seed=0)
-    print(objective(decode(x), problem), "vs optimum", milp(problem)[1])
+    d, stops = layout_source("sumo")(seed=0, n=3)    # 3 stops on the SUMO road network
+    Q, variables, offset, A = build_tour_qubo(d, stops, A=1.0, B=1 / max_tour_cost(d, stops))
+    x, _ = tabu(Q, variables, seed=0)
+    print(decode_tour(x), total_distance(d, decode_tour(x)), "s")
 
 Modules:
-    problem    Problem dataclass and instance builders (SUMO / random)
-    qubo       QUBO construction and penalty-weight selection
-    evaluate   scoring (QUBO energy and true objective) and feasibility checks
-    exact      brute force, enumeration and MILP (ground truth)
-    heuristic  greedy, simulated annealing, tabu
+    two_depot  merged-tour QUBO, layouts (road network or random), decoding, brute force, greedy
+    problem    SUMO road network as a directed graph (load_road_graph)
+    exact      brute force over every QUBO bit string
+    heuristic  simulated annealing, tabu search
+    evaluate   QUBO matrix helper
 """
-
-from .evaluate import decode, is_feasible, objective, qubo_energy
-from .problem import Problem, build_problem_from_sumo, make_random_problem
-from .qubo import build_qubo, penalty_bounds, qubo_offset, recommended_penalties
-
-__all__ = [
-    "Problem",
-    "make_random_problem",
-    "build_problem_from_sumo",
-    "build_qubo",
-    "qubo_offset",
-    "penalty_bounds",
-    "recommended_penalties",
-    "qubo_energy",
-    "decode",
-    "is_feasible",
-    "objective",
-]
