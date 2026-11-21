@@ -1,23 +1,3 @@
-"""Evaluation charts for the two-depot merged-tour QUBO -> results/figures/*.png
-
-Default output:
-  two_depot_solvers.png           every solver side by side: % of layouts where it found the best
-                                  route (with average extra distance) and average run time
-
-With --all, also:
-  two_depot_energy_landscape.png  report example: energy of all 2^16 bit strings, valid vs invalid
-  two_depot_penalty_sweep.png     SA success vs penalty weight A, raw vs normalised QUBO
-  two_depot_benchmark.png         extra distance of greedy / arbitrary plans vs optimum; solver hit rates
-  two_depot_tours.png             what the tours look like: optimal, greedy and QUBO plans on a map
-
-Reads results/two_depot_benchmark.csv (and results/two_depot_penalty_sweep.csv with --all); run
-scripts/two_depot_benchmark.py (and scripts/two_depot_penalty_sweep.py) first.
-
-Usage:
-    python scripts/two_depot_charts.py
-    python scripts/two_depot_charts.py --all
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -40,7 +20,7 @@ from fleetopt.evaluate import qubo_matrix  # noqa: E402
 from fleetopt.heuristic import simulated_annealing, tabu  # noqa: E402
 from fleetopt.two_depot import (  # noqa: E402
     D1, D2, brute_force_plans, build_tour_qubo, decode_tour, distance_matrix, greedy_plan,
-    max_tour_cost, split_routes, total_distance,
+    max_tour_cost, random_coords, split_routes, total_distance,
 )
 
 REPORT_COORDS = {D1: (0, 0), D2: (20, 0), "A": (2, 4), "B": (18, 4), "C": (16, -3)}
@@ -58,11 +38,6 @@ plt.rcParams.update({
     "grid.linewidth": 0.6, "legend.frameon": False, "figure.dpi": 110, "savefig.dpi": 160,
     "savefig.bbox": "tight",
 })
-
-
-def layout_word(rows):
-    """'road-network layouts' or 'random layouts', from the CSV's source column."""
-    return "road-network layouts" if rows and rows[0].get("source") == "sumo" else "random layouts"
 
 
 def read_csv(path):
@@ -170,7 +145,7 @@ def benchmark(rows, out):
     ax.set_xticks(pos, [f"{lab}\nmean {v.mean():+.0%}" for lab, v in zip(labels, data)])
     ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
     ax.set_ylabel("extra distance vs optimum")
-    ax.set_title(f"How far from optimal ({len(data[0])} {layout_word(rows)} per size)")
+    ax.set_title(f"How far from optimal ({len(data[0])} random layouts per size)")
     ax.grid(axis="x", visible=False)
 
     ax = axes[1]
@@ -240,233 +215,61 @@ def draw_plan(ax, coords, d, tour, title, opt):
         s.set_color(RULE)
 
 
-def draw_road_plan(ax, G, nodes, d, tour, title, opt, segs, bbox):
-    """One plan on the real road network: grey roads, each van's legs along its shortest road path."""
-    import networkx as nx
-    from matplotlib.collections import LineCollection
-
-    ax.add_collection(LineCollection(segs, colors=RULE, linewidths=0.4, zorder=1))
-    owner = {}
-    for k, r in enumerate(split_routes(tour) if tour else []):
-        owner.update({n: k for n in r[1:-1]})
-        for a, b in zip(r, r[1:]):
-            if a == b:
-                continue
-            path = nx.shortest_path(G, nodes[a], nodes[b], weight="weight")
-            xy = np.array([G.nodes[n]["pos"] for n in path])
-            ax.plot(xy[:, 0], xy[:, 1], color=VAN[k], lw=2.2 if k == 0 else 1.6, zorder=2 + k,
-                    solid_joinstyle="round", solid_capstyle="round")
-            m = len(xy) // 2
-            if m > 0:
-                ax.annotate("", xy=xy[m], xytext=xy[m - 1], zorder=4,
-                            arrowprops=dict(arrowstyle="-|>", color=VAN[k], lw=1.2, mutation_scale=11))
-    for name, node in nodes.items():
-        x, y = G.nodes[node]["pos"]
-        if name in (D1, D2):
-            ax.scatter(x, y, marker="s", s=150, color=VAN[name == D2], edgecolor="white", lw=1.5, zorder=6)
-            ax.annotate(name, (x, y), ha="center", va="center", color="white", fontsize=7,
-                        fontweight="bold", zorder=7)
-        else:
-            ax.scatter(x, y, s=130, color="white", edgecolor=VAN[owner[name]] if name in owner else INK3,
-                       lw=2, zorder=6)
-            ax.annotate(name, (x, y), ha="center", va="center", fontsize=6.5, fontweight="bold", zorder=7)
-    if tour:
-        dist = total_distance(d, tour)
-        gap = (dist - opt) / opt
-        sub = "optimal" if gap < TOL else f"{gap:+.0%} vs optimal"
-        ax.set_title(f"{title}\n{dist:,.0f} s driving · {sub}", fontsize=9.5)
-    else:
-        ax.set_title(f"{title}\ninvalid bit string", fontsize=9.5, color=BAD)
-    ax.set_xlim(bbox[0], bbox[1])
-    ax.set_ylim(bbox[2], bbox[3])
-    ax.set_aspect("equal")
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.grid(False)
-    for sp in ax.spines.values():
-        sp.set_visible(True)
-        sp.set_color(RULE)
-
-
-def tours(out, net=None, seeds=((3, 0), (3, 1), (3, 2))):
-    """Plans on real road-network layouts (same sampler as the benchmark), drawn on the roads."""
-    import networkx as nx
-
-    from fleetopt.problem import DEFAULT_NET, load_road_graph
-    from fleetopt.two_depot import road_layout
-
-    G = load_road_graph(net or DEFAULT_NET)
-    segs = [(G.nodes[u]["pos"], G.nodes[v]["pos"]) for u, v in G.edges]
+def tours(out, seed_6=1):
     rowsets = []
-    for n, seed in seeds:
-        d, dests, nodes = road_layout(G, seed, n)
-        plans = brute_force_plans(d, dests)
-        mc = max_tour_cost(d, dests)
-        Qn, vn, _, _ = build_tour_qubo(d, dests, A=1.0, B=1 / mc)
-        Qr, vr, _, _ = build_tour_qubo(d, dests)              # report weights: B = 1, A = 2 max c
-        panels = [
-            ("Optimal (brute force)", plans[0][1]),
-            ("QUBO · tabu, normalised", decode_tour(tabu(Qn, vn, seed=0)[0])),
-            ("QUBO · SA, raw weights", decode_tour(simulated_annealing(Qr, vr, seed=0)[0])),
-            ("Greedy rule", greedy_plan(d, dests)),
-        ]
-        # Frame: every road the plans use, plus a margin
-        pts = []
-        for _, t in panels:
-            for r in (split_routes(t) if t else []):
-                for a, b in zip(r, r[1:]):
-                    if a != b:
-                        pts += [G.nodes[x]["pos"] for x in nx.shortest_path(G, nodes[a], nodes[b], weight="weight")]
-        pts = np.array(pts)
-        pad = 0.06 * max(np.ptp(pts[:, 0]), np.ptp(pts[:, 1]))
-        bbox = (pts[:, 0].min() - pad, pts[:, 0].max() + pad, pts[:, 1].min() - pad, pts[:, 1].max() + pad)
-        rowsets.append(("Notebook scenario" if seed == 0 and n == 3 else f"{n} stops · layout {seed}",
-                        nodes, d, plans[0][0], panels, bbox))
+    d = distance_matrix(REPORT_COORDS)
+    dests = ["A", "B", "C"]
+    plans = brute_force_plans(d, dests)
+    mc = max_tour_cost(d, dests)
+    Q, v, _, _ = build_tour_qubo(d, dests, A=1.0, B=1 / mc)
+    rowsets.append(("Report example (3 stops, 16 qubits)", REPORT_COORDS, d, plans[0][0], [
+        ("Optimal (brute force)", plans[0][1]),
+        ("QUBO · SA, normalised", decode_tour(simulated_annealing(Q, v, seed=0)[0])),
+        ("Greedy rule", greedy_plan(d, dests)),
+        ("Worst valid plan", plans[-1][1]),
+    ]))
 
-    fig, axes = plt.subplots(len(rowsets), 4, figsize=(13, 2.9 * len(rowsets)))
-    axes = np.atleast_2d(axes)
-    for row, (label, nodes, d, opt, panels, bbox) in zip(axes, rowsets):
+    coords = random_coords(seed_6, 6)
+    d = distance_matrix(coords)
+    dests = [k for k in coords if k not in (D1, D2)]
+    plans = brute_force_plans(d, dests)
+    mc = max_tour_cost(d, dests)
+    Qn, vn, _, _ = build_tour_qubo(d, dests, A=1.0, B=1 / mc)
+    Qr, vr, _, _ = build_tour_qubo(d, dests)                  # report weights: B = 1, A = 2 max c
+    rowsets.append((f"Random layout, 6 stops (49 qubits, seed {seed_6})", coords, d, plans[0][0], [
+        ("Optimal (brute force)", plans[0][1]),
+        ("QUBO · tabu, normalised", decode_tour(tabu(Qn, vn, seed=0)[0])),
+        ("QUBO · SA, raw weights", decode_tour(simulated_annealing(Qr, vr, seed=0)[0])),
+        ("Greedy rule", greedy_plan(d, dests)),
+    ]))
+
+    fig, axes = plt.subplots(len(rowsets), 4, figsize=(12, 3.3 * len(rowsets)))
+    for row, (label, coords, d, opt, panels) in zip(axes, rowsets):
         for ax, (title, tour) in zip(row, panels):
-            draw_road_plan(ax, G, nodes, d, tour, title, opt, segs, bbox)
-        row[0].set_ylabel(label, fontsize=10, color=INK, fontweight="bold", labelpad=8)
+            draw_plan(ax, coords, d, tour, title, opt)
+        row[0].set_ylabel(label, fontsize=9.5, color=INK2, labelpad=8)
     handles = [Line2D([], [], color=VAN[0], lw=2, label="Van 1 (from D1)"),
-               Line2D([], [], color=VAN[1], lw=2, label="Van 2 (from D2)"),
-               Line2D([], [], color=RULE, lw=1, label="SUMO road network")]
-    fig.legend(handles=handles, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("Plans on the real road network (cost = free-flow travel time)", fontsize=11, fontweight="bold")
+               Line2D([], [], color=VAN[1], lw=2, label="Van 2 (from D2)")]
+    fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.02))
     fig.tight_layout()
     fig.savefig(out)
     plt.close(fig)
 
 
-# ------------------------------------------------------------------------------------------------
-SOLVERS = [  # (csv column, label, time column)
-    ("optimum", "Brute force\n(checks every route)", "optimum_s"),
-    ("bf_qubo", "Brute force on QUBO\n(checks every bit string)", "bf_qubo_s"),
-    ("tabu", "QUBO · tabu search", "tabu_s"),
-    ("sa", "QUBO · simulated annealing", "sa_s"),
-    ("greedy", "Greedy rule", "greedy_s"),
-]
-SIZE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]
-
-
-def fmt_time(sec):
-    if sec < 1e-3:
-        return f"{sec * 1e6:.0f} µs"
-    if sec < 1:
-        return f"{sec * 1e3:.1f} ms"
-    return f"{sec:.2f} s"
-
-
-def fmt_tick(sec):
-    for unit, scale in (("s", 1), ("ms", 1e-3), ("µs", 1e-6)):
-        if sec >= scale * 0.999:
-            return f"{sec / scale:g} {unit}"
-    return f"{sec * 1e9:g} ns"
-
-
-def solver_stats(rows):
-    """{(n, solver): (share optimal, mean extra distance, mean seconds)} on the layouts where
-    the QUBO solvers ran, so every solver is scored on the same layouts."""
-    stats = {}
-    for n in sorted({int(r["dests"]) for r in rows}):
-        rs = [r for r in rows if int(r["dests"]) == n and r["tabu"] != ""]
-        for key, _, tkey in SOLVERS:
-            done = [r for r in rs if r.get(key, "") != ""]
-            if not done:
-                continue
-            gaps = [(float(r[key]) - float(r["optimum"])) / float(r["optimum"])
-                    for r in done if r[key] != "invalid"]
-            hits = sum(g <= TOL for g in gaps)
-            secs = sum(float(r[tkey]) for r in done) / len(done)
-            stats[(n, key)] = (hits / len(done), sum(gaps) / len(gaps) if gaps else None, secs, len(done))
-    return stats
-
-
-def solver_comparison(rows, out):
-    stats = solver_stats(rows)
-    ns = sorted({n for n, _ in stats})
-    n_layouts = max(v[3] for v in stats.values())
-    fig, (ax_ok, ax_t) = plt.subplots(1, 2, figsize=(11.5, 4.6), sharey=True,
-                                      gridspec_kw=dict(width_ratios=[1.15, 1]))
-    h = 0.8 / len(ns)
-    missing = []
-    ys = np.arange(len(SOLVERS))[::-1]
-    for k, n in enumerate(ns):
-        col = SIZE_COLORS[k % len(SIZE_COLORS)]
-        off = (len(ns) - 1) / 2 * h - k * h
-        for y, (key, _, _) in zip(ys, SOLVERS):
-            yy = y + off
-            if (n, key) not in stats:
-                msg = f"not possible: 2^{(n + 1) ** 2} bit strings"
-                ax_ok.text(0.01, yy, msg, va="center", fontsize=8.5, color=INK3, style="italic")
-                missing.append((yy, msg))
-                continue
-            share, gap, secs, _ = stats[(n, key)]
-            ax_ok.barh(yy, share, height=h * 0.9, color=col)
-            label = f"{share:.0%}"
-            if gap is not None and gap > TOL:
-                label += f"  (avg {gap:+.1%} longer)" if gap < 0.01 else f"  (avg {gap:+.0%} longer)"
-            ax_ok.text(share + 0.015, yy, label, va="center", fontsize=8.5, color=INK)
-            ax_t.barh(yy, secs, height=h * 0.9, color=col)
-            ax_t.text(secs * 1.25, yy, fmt_time(secs), va="center", fontsize=8.5, color=INK)
-
-    ax_ok.set_yticks(ys, [lab for _, lab, _ in SOLVERS])
-    ax_ok.set_xlim(0, 1.45)
-    ax_ok.set_xticks([0, 0.25, 0.5, 0.75, 1])
-    ax_ok.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
-    ax_ok.set_title("Found the best route", loc="left")
-    ax_ok.set_xlabel(f"share of {n_layouts} {layout_word(rows)}")
-    ax_ok.grid(axis="y", visible=False)
-
-    ax_t.set_xscale("log")
-    tmin = min(v[2] for v in stats.values())
-    tmax = max(v[2] for v in stats.values())
-    ax_t.set_xlim(tmin / 3, tmax * 20)
-    ax_t.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: fmt_tick(v)))
-    for yy, msg in missing:
-        ax_t.text(tmin / 2.5, yy, "–", va="center", fontsize=8.5, color=INK3)
-    ax_t.set_title("Average time per layout (log scale)", loc="left")
-    ax_t.set_xlabel("wall-clock time on this laptop")
-    ax_t.grid(axis="y", visible=False)
-    ax_t.tick_params(axis="y", length=0)
-
-    handles = [matplotlib.patches.Patch(color=SIZE_COLORS[k % len(SIZE_COLORS)],
-                                        label=f"{n} stops ({(n + 1) ** 2} qubits)")
-               for k, n in enumerate(ns)]
-    fig.legend(handles=handles, loc="upper center", ncol=len(ns), bbox_to_anchor=(0.5, 1.03))
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(out)
-    plt.close(fig)
-    return stats
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--outdir", default=os.path.join(ROOT, "results", "figures"))
-    ap.add_argument("--sweep-csv", default=os.path.join(ROOT, "results", "two_depot_penalty_sweep.csv"))
-    ap.add_argument("--benchmark-csv", default=os.path.join(ROOT, "results", "two_depot_benchmark.csv"))
-    ap.add_argument("--net", default=None, help="SUMO network for the tours figure")
-    ap.add_argument("--all", action="store_true", help="also write the four detailed figures")
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
     p = lambda name: os.path.join(args.outdir, name)  # noqa: E731
 
-    bench = read_csv(args.benchmark_csv)
-    stats = solver_comparison(bench, p("two_depot_solvers.png"))
-    for (n, key), (share, gap, secs, cnt) in stats.items():
-        print(f"{n} stops  {key:8} best route {share:4.0%} of {cnt}  avg extra "
-              f"{'-' if gap is None else f'{gap:+.1%}':>6}  {fmt_time(secs)}")
-    if not args.all:
-        print(f"Figure written to {args.outdir}")
-        return
-
     info = energy_landscape(p("two_depot_energy_landscape.png"))
     print(f"energy landscape: {info}")
-    penalty_sweep(read_csv(args.sweep_csv),
+    penalty_sweep(read_csv(os.path.join(ROOT, "results", "two_depot_penalty_sweep.csv")),
                   p("two_depot_penalty_sweep.png"))
-    benchmark(bench, p("two_depot_benchmark.png"))
-    tours(p("two_depot_tours.png"), args.net)
+    benchmark(read_csv(os.path.join(ROOT, "results", "two_depot_benchmark.csv")),
+              p("two_depot_benchmark.png"))
+    tours(p("two_depot_tours.png"))
     print(f"Figures written to {args.outdir}")
 
 
