@@ -1,10 +1,3 @@
-"""The QUBO model itself: structure, and agreement with the independently computed objective.
-
-The most important test is test_energy_matches_objective_on_every_feasible_state: if QUBO energy
-plus offset equals `objective()` on every valid plan, the cost and congestion terms are encoded
-correctly. The penalty tests then check that invalid plans are pushed above the optimum.
-"""
-
 import itertools
 from dataclasses import replace
 

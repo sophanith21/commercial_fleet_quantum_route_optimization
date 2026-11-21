@@ -1,9 +1,3 @@
-"""Penalty weights: the provable bound A_min (qubo.penalty_bounds) and the recommended defaults.
-
-Checks that the bound is correct (A just above it gives a feasible optimal ground state on
-every instance) and tight (just below it fails on the tiny instance).
-"""
-
 from dataclasses import replace
 
 import pytest

@@ -1,10 +1,3 @@
-"""End-to-end check on the real SUMO scenario (marked slow; skipped without sumolib).
-
-Builds the same instance as preprocessing.ipynb (seed 42, 3 vans, 3 destinations, 2 paths) and
-checks that every solver returns a feasible plan with the exact optimum. This instance matters
-because its two D3 paths are near-ties, which the random instances do not exercise.
-"""
-
 import os
 
 import pytest

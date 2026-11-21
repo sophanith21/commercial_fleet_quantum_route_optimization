@@ -1,24 +1,3 @@
-"""QUBO formulation of the route-assignment problem, plus penalty-weight selection.
-
-A QUBO (Quadratic Unconstrained Binary Optimisation) is: minimise  E(x) = sum_{i<=j} Q_ij x_i x_j
-over binary vectors x. Quantum annealers and many classical heuristics only accept this form,
-so the hard constraints of the problem have to become penalty terms in the energy.
-
-One binary variable per (van, destination, path):  x[v,d,p] = 1  <=>  van v drives path p to d.
-
-    E(x) = H_cost + H_cong + H_A + H_B
-
-    H_cost = sum_{v,d,p} C_norm[d,p] * x[v,d,p]                       travel time
-    H_cong = sum_{route pairs a,b of different dests} sum_{v1,v2}
-             congestion(a, b) * x[v1,a] * x[v2,b]                       shared roads
-    H_A    = A * sum_d (sum_{v,p} x[v,d,p] - 1)^2                       each dest exactly once
-    H_B    = B * sum_v sum_{pairs i<j of v's variables} x_i * x_j       each van at most once
-
-Expanding H_A with x^2 = x (binary) gives  A - A*sum x + 2A*sum_{i<j} x_i x_j  per destination.
-The constant A per destination is dropped from Q (it does not change the minimiser) and is
-returned by `qubo_offset()` so energies can be turned back into real costs.
-"""
-
 from __future__ import annotations
 
 from itertools import combinations
@@ -36,23 +15,7 @@ DEFAULT_PENALTY_FACTOR = 1.1
 # ---------------------------------------------------------------------------------------------
 
 def penalty_bounds(problem: Problem) -> tuple[float, float]:
-    """Return (A_min, B_min): any A > A_min and B > B_min makes every QUBO ground state feasible.
 
-    Assumes len(vans) >= len(destinations) and non-negative costs / lam_cong. Argument:
-      1. Over-serving a destination only adds non-negative cost and A-penalty, so a minimiser
-         serves each destination at most once.
-      2. With <= |D| <= |V| selected variables, vans can be reassigned to be distinct without
-         changing travel or congestion cost (neither depends on the van), removing all B-penalty.
-         So any B > 0 rules out van sharing:  B_min = 0 (strict).
-      3. Serving a missing destination d with its best path p lowers the A-penalty by A and
-         raises cost by at most  C_norm[d,p] + sum_{d' != d} max_{p'} congestion((d,p),(d',p')).
-         So A > max_d min_p of that quantity rules out unserved destinations.
-    The bound is tight in the worst case (see tests/test_penalties.py::test_tiny_bound_is_tight).
-
-    Why it matters: penalties that are too small give infeasible ground states; penalties that
-    are too large flatten the cost landscape relative to the constraints, which makes annealing
-    (classical or quantum) much less likely to find the optimum.
-    """
     if len(problem.vans) < len(problem.paths):
         raise ValueError("Penalty bound assumes at least as many vans as destinations.")
     if problem.lam_cong < 0 or min(problem.C_norm.values()) < 0:
@@ -97,16 +60,6 @@ def qubo_offset(problem: Problem, A: float | None = None) -> float:
 
 def build_qubo(problem: Problem, A: float | None = None, B: float | None = None,
                verbose: bool = False):
-    """Build the QUBO. Returns (Q, variables).
-
-    Q:         {(var_i, var_j): coefficient} with index(var_i) <= index(var_j), i.e. upper
-               triangular. Diagonal keys (var, var) are the linear terms.
-    variables: [(v, d, p), ...] in a fixed order; that order defines the indices above and
-               the bit positions used by the solvers.
-
-    A / B default to recommended_penalties(problem); pass explicit values to override.
-    Zero coefficients are not stored.
-    """
     if A is None or B is None:
         A_default, B_default = recommended_penalties(problem)
         A = A_default if A is None else A

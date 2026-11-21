@@ -1,9 +1,3 @@
-"""Exact solvers: each must return the true optimum, and the three must agree.
-
-Results are compared by objective value, not by assignment: vans are interchangeable and some
-paths tie, so several different plans can be optimal.
-"""
-
 from dataclasses import replace
 
 import pytest

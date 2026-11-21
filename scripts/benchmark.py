@@ -1,24 +1,3 @@
-"""Benchmark classical solvers: objective, optimality gap and runtime across problem sizes.
-
-The MILP optimum is the reference for every gap. Exact solvers that do not scale are skipped
-above their limits (brute force > BF_MAX_VARS variables, enumeration > ENUM_MAX_PLANS plans).
-
-Usage:
-    python scripts/benchmark.py                        # synthetic instances
-    python scripts/benchmark.py --sumo                 # also the real SUMO scenario
-    python scripts/benchmark.py --sizes 3x3x2 5x5x3 --seeds 10 --out results/run.csv
-
-Size format: VANSxDESTINATIONSxK_PATHS (number of QUBO variables = VANS * DESTINATIONS * K_PATHS).
-
-Output:
-  * a summary table on stdout, one block per instance size: how often each solver returned a
-    feasible plan, how often it hit the optimum, mean / max gap and mean runtime;
-  * one CSV row per (instance, solver) in --out, for plotting or further analysis.
-
-Timing note: QUBO-based solvers (brute force, SA, tabu) include the time to build the QUBO;
-MILP, enumeration and greedy work from the Problem directly and do not need it.
-"""
-
 from __future__ import annotations
 
 import argparse

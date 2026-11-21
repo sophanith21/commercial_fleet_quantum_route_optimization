@@ -1,14 +1,3 @@
-"""Shared fixtures and helpers for the test suite.
-
-Fixtures:
-    tiny                  hand-checkable 2x2x2 instance with a known optimum (TINY_OPT_*)
-    more_vans_than_dests  3 vans / 2 destinations: one van must stay idle
-    random_problem        factory random_problem(seed, **kwargs) -> Problem (18 vars by default)
-
-Markers:
-    requires_milp         skip a test unless PuLP and a MILP backend (HiGHS or CBC) are installed
-"""
-
 import pytest
 
 from fleetopt.problem import Problem, make_random_problem

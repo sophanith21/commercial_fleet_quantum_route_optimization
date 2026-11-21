@@ -1,11 +1,3 @@
-"""Heuristic solvers, judged against the exact optimum.
-
-Heuristics are not guaranteed optimal, so the properties tested are: feasibility, never beating
-the exact optimum (that would mean a bug in the exact solver or the objective), reproducibility
-with a fixed seed, and how often / how closely they reach the optimum. All randomness is seeded,
-so the statistical tests are deterministic and not flaky.
-"""
-
 import pytest
 
 from conftest import TINY_OPT_VALUE

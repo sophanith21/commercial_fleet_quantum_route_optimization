@@ -1,17 +1,3 @@
-"""Penalty-weight sweep: how A and B affect simulated-annealing success.
-
-Every A tested is a multiple of the provable bound A_min (fleetopt.qubo.penalty_bounds), so every
-setting has a feasible ground state; what changes is how easy that state is to find. The old
-fixed default A = B = 10 is included for comparison.
-
-For each (instance, A, B) SA runs --runs times with num_reads=1, giving a per-read
-probability of returning a feasible plan and of returning the exact (MILP) optimum.
-
-Usage:
-    python scripts/penalty_sweep.py
-    python scripts/penalty_sweep.py --sizes 5x5x3 6x6x3 --seeds 10 --runs 20
-"""
-
 from __future__ import annotations
 
 import argparse
