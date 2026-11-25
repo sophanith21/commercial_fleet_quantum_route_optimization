@@ -8,6 +8,7 @@ dependencies = ["numpy", "networkx"]
 [project.optional-dependencies]
 sumo = ["sumolib"]
 dwave = ["dimod", "dwave-samplers"]
+qiskit = ["qiskit"]
 test = ["pytest", "matplotlib", "nbclient", "nbformat", "ipykernel"]
 
 [build-system]

@@ -16,11 +16,12 @@ pytestmark = [
 TWO_DEPOT_CHECK = """
 import sys
 sys.path.insert(0, "src")
-from fleetopt.two_depot import brute_force_plans, build_tour_qubo, total_distance
+from fleetopt.two_depot import brute_force_plans, build_tour_qubo, max_tour_cost, total_distance
 assert tour is not None, "notebook QUBO returned an invalid plan"
 best = brute_force_plans(d, dest_labels)[0][0]
 assert abs(total_distance(d, tour) - best) < 1e-6, (total_distance(d, tour), best)
-Q_pkg, vars_pkg, _, A_pkg = build_tour_qubo(d, dest_labels)
+mc_pkg = max_tour_cost(d, dest_labels)
+Q_pkg, vars_pkg, _, A_pkg = build_tour_qubo(d, dest_labels, A=1.0, B=1.0 / mc_pkg)
 assert abs(A - A_pkg) < 1e-9
 assert set(Q) == set(Q_pkg) and all(abs(Q[k] - Q_pkg[k]) < 1e-9 for k in Q)
 print("CHECK OK", round(best, 2))

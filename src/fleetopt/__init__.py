@@ -12,9 +12,10 @@ Typical use:
     print(decode_tour(x), total_distance(d, decode_tour(x)), "s")
 
 Modules:
-    two_depot  merged-tour QUBO, layouts (road network or random), decoding, brute force, greedy
-    problem    SUMO road network as a directed graph (load_road_graph)
-    exact      brute force over every QUBO bit string
-    heuristic  simulated annealing, tabu search
-    evaluate   QUBO matrix helper
+    two_depot    merged-tour QUBO, layouts (road network or random), decoding, brute force, greedy
+    hamiltonian  QUBO -> Ising -> Qiskit SparsePauliOp cost Hamiltonian, bitstring decoding
+    problem      SUMO road network as a directed graph (load_road_graph)
+    exact        brute force over every QUBO bit string
+    heuristic    simulated annealing, tabu search
+    evaluate     QUBO matrix helper
 """
